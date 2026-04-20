@@ -60,6 +60,7 @@ jobs:
           fi
 
           rsync --archive --delete --exclude '.git' dist/ "$PUBLISH_DIR"/
+          cp "$PUBLISH_DIR/index.html" "$PUBLISH_DIR/404.html"
           touch "$PUBLISH_DIR/.nojekyll"
 
           (

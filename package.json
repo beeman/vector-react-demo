@@ -12,13 +12,15 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "prepare": "lefthook install",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "validator": "solana-test-validator --ledger ./tmp/test-ledger --bpf-program vectorcLBXJ2TuoKuUygkEi6FWqvBnbHDEDWoYamfjV ./fixtures/vector/vector_program.so --account SysvarRent111111111111111111111111111111111 ./fixtures/vector/rent.json --mint EvFUfisEScFuZSqDXagC17m3bpP32B74dseMHtzQ5TNb --reset"
   },
   "dependencies": {
     "@base-ui/react": "1.4.0",
     "@fontsource-variable/roboto": "5.2.10",
     "@solana-mobile/wallet-standard-mobile": "0.5.1",
     "@solana-program/memo": "0.11.0",
+    "@solana-program/token": "0.13.0",
     "@solana/kit": "6.8.0",
     "@solana/react": "3.0.3",
     "@tailwindcss/vite": "4.2.2",
