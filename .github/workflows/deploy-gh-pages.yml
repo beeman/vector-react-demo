@@ -1,0 +1,76 @@
+name: Deploy GitHub Pages
+
+concurrency:
+  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event.inputs.ref || github.ref }}
+
+on:
+  push:
+    branches:
+      - main
+
+  workflow_dispatch:
+    inputs:
+      ref:
+        default: main
+        description: Branch, tag, or SHA to deploy to gh-pages
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.inputs.ref || github.sha }}
+
+      - name: Setup Environment
+        uses: ./.github/actions/setup
+
+      - name: Build
+        run: bun run build
+
+      - name: Publish dist to gh-pages
+        env:
+          DEPLOY_REF: ${{ github.event.inputs.ref || github.ref_name }}
+          PUBLISH_DIR: /tmp/gh-pages
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          current_sha="$(git rev-parse HEAD)"
+
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+
+          if git ls-remote --exit-code origin gh-pages; then
+            git worktree add --force "$PUBLISH_DIR" origin/gh-pages
+          else
+            git worktree add --detach --force "$PUBLISH_DIR"
+            (
+              cd "$PUBLISH_DIR"
+              git checkout --orphan gh-pages
+            )
+          fi
+
+          rsync --archive --delete --exclude '.git' dist/ "$PUBLISH_DIR"/
+          touch "$PUBLISH_DIR/.nojekyll"
+
+          (
+            cd "$PUBLISH_DIR"
+            git add --all
+
+            if git diff --cached --quiet; then
+              echo "No deployment changes to publish."
+              exit 0
+            fi
+
+            git commit -m "deploy: ${DEPLOY_REF} (${current_sha})"
+            git push origin HEAD:gh-pages --force
+          )
