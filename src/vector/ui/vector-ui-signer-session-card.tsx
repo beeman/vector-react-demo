@@ -65,7 +65,8 @@ export function VectorUiSignerSessionCard({
       <CardHeader>
         <CardTitle>Vector signer session</CardTitle>
         <CardDescription>
-          Generate a session-only Ed25519 key for Vector or import a saved 32-byte seed or 64-byte keypair JSON array.
+          Generate an Ed25519 key for Vector or import a saved 32-byte seed or 64-byte keypair JSON array. The app saves
+          it to this browser after generate or import.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -101,10 +102,10 @@ export function VectorUiSignerSessionCard({
           </Button>
         </form>
         <Alert>
-          <AlertTitle>Session-only by design</AlertTitle>
+          <AlertTitle>Saved in this browser</AlertTitle>
           <AlertDescription>
-            The generated signer stays in memory only. Export its bytes from the next screen if you want to reuse the
-            same Vector account after a refresh.
+            Refresh restores the same signer from local storage. Export its bytes from the next screen if you want to
+            reuse it in another browser or device.
           </AlertDescription>
         </Alert>
       </CardContent>

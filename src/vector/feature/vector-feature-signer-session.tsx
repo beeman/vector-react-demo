@@ -12,6 +12,38 @@ export interface VectorSignerSessionState {
   signer: KeyPairSigner
 }
 
+export async function createSignerSessionStateFromBytes(bytes: Uint8Array): Promise<VectorSignerSessionState> {
+  return createSignerSessionState(
+    bytes.length === 64
+      ? await createKeyPairSignerFromBytes(bytes, true)
+      : await createKeyPairSignerFromPrivateKeyBytes(bytes, true),
+  )
+}
+
+export async function restoreSignerSessionState(exportKeyBytesJson: string): Promise<VectorSignerSessionState> {
+  const parsed = JSON.parse(exportKeyBytesJson) as unknown
+
+  if (!Array.isArray(parsed)) {
+    throw new Error('Stored signer bytes must be a JSON array.')
+  }
+
+  const bytes = Uint8Array.from(
+    parsed.map((item) => {
+      if (!Number.isInteger(item) || item < 0 || item > 255) {
+        throw new Error('Stored signer bytes must be integers between 0 and 255.')
+      }
+
+      return item
+    }),
+  )
+
+  if (bytes.length !== 32 && bytes.length !== 64) {
+    throw new Error('Stored signer bytes must contain exactly 32 or 64 bytes.')
+  }
+
+  return createSignerSessionStateFromBytes(bytes)
+}
+
 export function VectorFeatureSignerSession({ onReady }: { onReady(state: VectorSignerSessionState): void }) {
   async function handleGenerate() {
     onReady(await createSignerSessionState(await generateKeyPairSigner(true)))
@@ -19,13 +51,7 @@ export function VectorFeatureSignerSession({ onReady }: { onReady(state: VectorS
 
   async function handleImport(bytes: Uint8Array) {
     try {
-      onReady(
-        await createSignerSessionState(
-          bytes.length === 64
-            ? await createKeyPairSignerFromBytes(bytes, true)
-            : await createKeyPairSignerFromPrivateKeyBytes(bytes, true),
-        ),
-      )
+      onReady(await createSignerSessionStateFromBytes(bytes))
 
       return null
     } catch (error) {

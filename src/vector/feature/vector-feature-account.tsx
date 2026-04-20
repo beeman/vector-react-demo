@@ -17,12 +17,14 @@ export function VectorFeatureAccount({
   account,
   cluster,
   exportKeyBytesJson,
+  onForgetSigner,
   renderReady,
   signer,
 }: {
   account: UiWalletAccount
   cluster: SolanaClusterId
   exportKeyBytesJson: string
+  onForgetSigner(): void
   renderReady(props: VectorFeatureAccountReadyProps): ReactNode
   signer: KeyPairSigner
 }) {
@@ -51,6 +53,7 @@ export function VectorFeatureAccount({
         exportKeyBytesJson={exportKeyBytesJson}
         isLoading={vectorAccountQuery.isLoading}
         isRefreshing={vectorAccountQuery.isRefreshing}
+        onForgetSigner={onForgetSigner}
         programAddress={vectorAccountQuery.programAddress}
         programMessage={vectorAccountQuery.programMessage}
         programStatus={vectorAccountQuery.programStatus}

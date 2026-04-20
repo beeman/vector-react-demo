@@ -1,4 +1,5 @@
 import { Badge } from '@/core/ui/badge'
+import { Button } from '@/core/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/core/ui/card'
 import { Textarea } from '@/core/ui/textarea'
 import { SolanaUiAddress } from '@/solana/ui/solana-ui-address'
@@ -10,6 +11,7 @@ export function VectorUiAccountStateCard({
   exportKeyBytesJson,
   isLoading,
   isRefreshing,
+  onForgetSigner,
   programAddress,
   programMessage,
   programStatus,
@@ -21,6 +23,7 @@ export function VectorUiAccountStateCard({
   exportKeyBytesJson: string
   isLoading: boolean
   isRefreshing: boolean
+  onForgetSigner(): void
   programAddress: string
   programMessage: null | string
   programStatus: VectorProgramStatus
@@ -112,10 +115,13 @@ export function VectorUiAccountStateCard({
         <div className="space-y-3 rounded-lg border border-border/60 bg-muted/20 p-4 lg:col-span-2">
           <div className="text-sm font-medium">Session key export</div>
           <CardDescription>
-            Save these bytes if you want to reopen the same Vector session signer later. They are not persisted anywhere
-            in the app.
+            These bytes are saved to this browser&apos;s local storage so the app can restore the same signer after a
+            refresh. Export them if you want to reuse the signer elsewhere.
           </CardDescription>
           <Textarea className="min-h-28 font-mono text-xs" readOnly value={exportKeyBytesJson} />
+          <Button className="w-full sm:w-fit" onClick={() => onForgetSigner()} type="button" variant="outline">
+            Forget saved signer
+          </Button>
         </div>
         {programMessage ? (
           <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-xs/relaxed text-destructive lg:col-span-2">
