@@ -1,27 +1,15 @@
 import { AuthorityType, getMintToInstruction, getSetAuthorityInstruction } from '@solana-program/token'
-import {
-  type Address,
-  assertIsTransactionMessageWithSingleSendingSigner,
-  compileTransactionMessage,
-  getBase58Decoder,
-  getBase64Decoder,
-  getCompiledTransactionMessageEncoder,
-  type Instruction,
-  type KeyPairSigner,
-  signAndSendTransactionMessageWithSigners,
-  type TransactionMessageBytesBase64,
-  type TransactionSigner,
-} from '@solana/kit'
+import { type Address, type KeyPairSigner } from '@solana/kit'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { type SolanaClusterId, type UiWalletAccount, useWalletUiSigner } from '@wallet-ui/react'
 import { useState } from 'react'
 
 import type { SolanaClient } from '@/solana/data-access/solana-client'
 
-import {
-  createVectorTransactionMessage,
-  getVectorComputeBudgetInstructions,
-} from '@/vector/data-access/create-vector-transaction-message'
+import { assertVectorProgramIsAvailable } from '@/vector/data-access/assert-vector-program-is-available'
+import { getVectorComputeBudgetInstructions } from '@/vector/data-access/create-vector-transaction-message'
+import { executeVectorTransaction } from '@/vector/data-access/execute-vector-transaction'
+import { formatMutationError } from '@/vector/data-access/format-mutation-error'
 import { getVectorProgramAddress } from '@/vector/data-access/get-vector-program-address'
 import { getVectorAccountQueryKey } from '@/vector/data-access/use-vector-account-query'
 import { signAdvanceInstruction } from '@/vector/data-access/vector-protocol'
@@ -87,9 +75,13 @@ export function useVectorAdvanceDemoMutation({
         subInstructions: [pdaToConnectedWalletInstruction],
       })
 
-      return await executeAdvanceInstructions({
+      return await executeVectorTransaction({
         client,
         instructions: [advanceInstruction, mintToInstruction, connectedWalletToPdaInstruction],
+        requiredBalance: {
+          additionalLamports: 0n,
+          insufficientFundsMessage: 'Not enough SOL to pay transaction fees on this cluster.',
+        },
         transactionSigner,
       })
     },
@@ -123,73 +115,4 @@ export function useVectorAdvanceDemoMutation({
     isLoading: isPending,
     signature,
   }
-}
-
-async function assertVectorProgramIsAvailable({
-  client,
-  programAddress,
-}: {
-  client: SolanaClient
-  programAddress: Address
-}) {
-  const { value: maybeProgramAccount } = await client.rpc
-    .getAccountInfo(programAddress, { commitment: 'confirmed', encoding: 'base64' })
-    .send()
-
-  if (!maybeProgramAccount) {
-    throw new Error(`Program ${programAddress} is not deployed on this cluster.`)
-  }
-  if (!maybeProgramAccount.executable) {
-    throw new Error(`Program ${programAddress} exists on this cluster but is not executable.`)
-  }
-}
-
-async function executeAdvanceInstructions({
-  client,
-  instructions,
-  transactionSigner,
-}: {
-  client: SolanaClient
-  instructions: readonly Instruction[]
-  transactionSigner: TransactionSigner
-}) {
-  const transactionMessage = await createVectorTransactionMessage({
-    client,
-    instructions,
-    transactionSigner,
-  })
-
-  assertIsTransactionMessageWithSingleSendingSigner(transactionMessage)
-
-  const encodedTransactionMessage = getCompiledTransactionMessageEncoder().encode(
-    compileTransactionMessage(transactionMessage),
-  )
-  const [{ value: balance }, { value: fee }] = await Promise.all([
-    client.rpc.getBalance(transactionSigner.address, { commitment: 'confirmed' }).send(),
-    client.rpc
-      .getFeeForMessage(getBase64Decoder().decode(encodedTransactionMessage) as TransactionMessageBytesBase64, {
-        commitment: 'confirmed',
-      })
-      .send(),
-  ])
-
-  if (fee === null) {
-    throw new Error('Unable to estimate the transaction fee. Try again with a fresh blockhash.')
-  }
-  if (balance < fee) {
-    throw new Error('Not enough SOL to pay transaction fees on this cluster.')
-  }
-
-  const signatureBytes = await signAndSendTransactionMessageWithSigners(transactionMessage)
-  const signature = getBase58Decoder().decode(signatureBytes)
-
-  if (!signature) {
-    throw new Error('Transaction submitted but no signature was returned by the wallet adapter.')
-  }
-
-  return signature
-}
-
-function formatMutationError(error: unknown) {
-  return error instanceof Error ? error.message : 'Unknown error occurred.'
 }
