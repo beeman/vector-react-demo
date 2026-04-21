@@ -12,8 +12,8 @@ import {
   setTransactionMessageLifetimeUsingBlockhash,
   signAndSendTransactionMessageWithSigners,
   type TransactionMessageBytesBase64,
+  type TransactionSigner,
 } from '@solana/kit'
-import { type useWalletUiSigner } from '@wallet-ui/react'
 
 import type { SolanaClient } from '@/solana/data-access/solana-client'
 
@@ -24,7 +24,7 @@ export async function executeWalletSignAndSendTransaction({
 }: {
   client: SolanaClient
   text: string
-  transactionSigner: ReturnType<typeof useWalletUiSigner>
+  transactionSigner: TransactionSigner
 }) {
   const { value: latestBlockhash } = await client.rpc.getLatestBlockhash({ commitment: 'confirmed' }).send()
   const message = pipe(

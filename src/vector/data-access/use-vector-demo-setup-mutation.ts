@@ -8,25 +8,24 @@ import {
 } from '@solana-program/token'
 import {
   type Address,
-  appendTransactionMessageInstruction,
   assertIsTransactionMessageWithSingleSendingSigner,
   compileTransactionMessage,
-  createTransactionMessage,
   generateKeyPairSigner,
   getBase58Decoder,
   getBase64Decoder,
   getCompiledTransactionMessageEncoder,
-  pipe,
-  setTransactionMessageFeePayerSigner,
-  setTransactionMessageLifetimeUsingBlockhash,
+  type Instruction,
   signAndSendTransactionMessageWithSigners,
   type TransactionMessageBytesBase64,
+  type TransactionSigner,
 } from '@solana/kit'
 import { useMutation } from '@tanstack/react-query'
 import { type UiWalletAccount, useWalletUiSigner } from '@wallet-ui/react'
 import { useState } from 'react'
 
 import type { SolanaClient } from '@/solana/data-access/solana-client'
+
+import { createVectorTransactionMessage } from '@/vector/data-access/create-vector-transaction-message'
 
 export interface VectorDemoSetupResult {
   destinationAtaAddress: Address
@@ -64,7 +63,7 @@ export function useVectorDemoSetupMutation({
       const tokenAccountRent = await client.rpc
         .getMinimumBalanceForRentExemption(165n, { commitment: 'confirmed' })
         .send()
-      const instructions = [
+      const instructions: readonly Instruction[] = [
         getCreateAccountInstruction({
           lamports: mintRent,
           newAccount: mintSigner,
@@ -130,29 +129,15 @@ async function executeSetupInstructions({
   transactionSigner,
 }: {
   client: SolanaClient
-  instructions: readonly [
-    Awaited<ReturnType<typeof getCreateAccountInstruction>>,
-    ReturnType<typeof getInitializeMint2Instruction>,
-    Awaited<ReturnType<typeof getCreateAssociatedTokenInstructionAsync>>,
-  ]
+  instructions: readonly Instruction[]
   requiredRent: bigint
-  transactionSigner: ReturnType<typeof useWalletUiSigner>
+  transactionSigner: TransactionSigner
 }) {
-  const { value: latestBlockhash } = await client.rpc.getLatestBlockhash({ commitment: 'confirmed' }).send()
-  const transactionMessage = appendTransactionMessageInstruction(
-    instructions[2],
-    appendTransactionMessageInstruction(
-      instructions[1],
-      appendTransactionMessageInstruction(
-        instructions[0],
-        pipe(
-          createTransactionMessage({ version: 0 }),
-          (message) => setTransactionMessageFeePayerSigner(transactionSigner, message),
-          (message) => setTransactionMessageLifetimeUsingBlockhash(latestBlockhash, message),
-        ),
-      ),
-    ),
-  )
+  const transactionMessage = await createVectorTransactionMessage({
+    client,
+    instructions,
+    transactionSigner,
+  })
 
   assertIsTransactionMessageWithSingleSendingSigner(transactionMessage)
 
