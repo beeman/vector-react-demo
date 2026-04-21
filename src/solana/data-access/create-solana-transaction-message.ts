@@ -1,10 +1,8 @@
 import { type Instruction } from '@solana/instructions'
 import {
-  type Address,
   appendTransactionMessageInstructions,
   createTransactionMessage,
   pipe,
-  prependTransactionMessageInstructions,
   setTransactionMessageComputeUnitLimit,
   setTransactionMessageComputeUnitPrice,
   setTransactionMessageFeePayerSigner,
@@ -14,42 +12,37 @@ import {
 
 import type { SolanaClient } from '@/solana/data-access/solana-client'
 
-const VECTOR_COMPUTE_UNIT_LIMIT = 600_000
-const VECTOR_COMPUTE_UNIT_PRICE = 125_000n
+export type SolanaComputeBudget = Readonly<{
+  limit: number
+  price: bigint
+}>
 
-export async function createVectorTransactionMessage({
+export async function createSolanaTransactionMessage({
   client,
+  computeBudget,
   instructions,
   transactionSigner,
 }: {
   client: SolanaClient
+  computeBudget: SolanaComputeBudget
   instructions: readonly Instruction[]
   transactionSigner: TransactionSigner
 }) {
   const { value: latestBlockhash } = await client.rpc.getLatestBlockhash({ commitment: 'confirmed' }).send()
+  const computeBudgetInstructions = getSolanaComputeBudgetInstructions(computeBudget)
 
   return pipe(
     createTransactionMessage({ version: 0 }),
     (message) => setTransactionMessageFeePayerSigner(transactionSigner, message),
     (message) => setTransactionMessageLifetimeUsingBlockhash(latestBlockhash, message),
-    (message) => appendTransactionMessageInstructions(instructions, message),
-    (message) => prependTransactionMessageInstructions(getVectorComputeBudgetInstructions(), message),
+    (message) => appendTransactionMessageInstructions([...computeBudgetInstructions, ...instructions], message),
   )
 }
 
-export function getVectorComputeBudgetInstructions() {
-  const instructions = pipe(
+export function getSolanaComputeBudgetInstructions({ limit, price }: SolanaComputeBudget) {
+  return pipe(
     createTransactionMessage({ version: 0 }),
-    (message) => setTransactionMessageComputeUnitPrice(VECTOR_COMPUTE_UNIT_PRICE, message),
-    (message) => setTransactionMessageComputeUnitLimit(VECTOR_COMPUTE_UNIT_LIMIT, message),
-  ).instructions as readonly {
-    data: Uint8Array
-    programAddress: Address
-  }[]
-
-  return instructions.map((instruction) => ({
-    accounts: [],
-    data: instruction.data,
-    programAddress: instruction.programAddress,
-  }))
+    (message) => setTransactionMessageComputeUnitPrice(price, message),
+    (message) => setTransactionMessageComputeUnitLimit(limit, message),
+  ).instructions as readonly Instruction[]
 }

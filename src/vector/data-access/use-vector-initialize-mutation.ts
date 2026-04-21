@@ -1,25 +1,19 @@
-import {
-  type Address,
-  assertIsTransactionMessageWithSingleSendingSigner,
-  compileTransactionMessage,
-  getBase58Decoder,
-  getBase64Decoder,
-  getCompiledTransactionMessageEncoder,
-  type Instruction,
-  signAndSendTransactionMessageWithSigners,
-  type TransactionMessageBytesBase64,
-  type TransactionSigner,
-} from '@solana/kit'
+import { type Address } from '@solana/kit'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { type SolanaClusterId, type UiWalletAccount, useWalletUiSigner } from '@wallet-ui/react'
 import { useState } from 'react'
 
 import type { SolanaClient } from '@/solana/data-access/solana-client'
 
-import { createVectorTransactionMessage } from '@/vector/data-access/create-vector-transaction-message'
+import { createSolanaTransactionMessage } from '@/solana/data-access/create-solana-transaction-message'
+import { executeSolanaTransactionMessage } from '@/solana/data-access/execute-solana-transaction-message'
 import { getVectorProgramAddress } from '@/vector/data-access/get-vector-program-address'
 import { getVectorAccountQueryKey } from '@/vector/data-access/use-vector-account-query'
-import { createInitializeInstruction, VECTOR_ACCOUNT_SIZE } from '@/vector/data-access/vector-protocol'
+import {
+  createInitializeInstruction,
+  VECTOR_ACCOUNT_SIZE,
+  vectorComputeBudget,
+} from '@/vector/data-access/vector-protocol'
 
 export function useVectorInitializeMutation({
   account,
@@ -49,12 +43,19 @@ export function useVectorInitializeMutation({
       const requiredRent = await client.rpc
         .getMinimumBalanceForRentExemption(BigInt(VECTOR_ACCOUNT_SIZE), { commitment: 'confirmed' })
         .send()
-
-      return await executeInitializeInstruction({
+      const transactionMessage = await createSolanaTransactionMessage({
         client,
-        instruction,
-        requiredRent,
+        computeBudget: vectorComputeBudget,
+        instructions: [instruction],
         transactionSigner,
+      })
+
+      return await executeSolanaTransactionMessage({
+        client,
+        insufficientBalanceMessage:
+          'Not enough SOL to pay transaction fees and fund the Vector account on this cluster.',
+        requiredBalance: requiredRent,
+        transactionMessage,
       })
     },
     onSuccess: async () => {
@@ -106,54 +107,6 @@ async function assertVectorProgramIsAvailable({
   if (!maybeProgramAccount.executable) {
     throw new Error(`Program ${programAddress} exists on this cluster but is not executable.`)
   }
-}
-
-async function executeInitializeInstruction({
-  client,
-  instruction,
-  requiredRent,
-  transactionSigner,
-}: {
-  client: SolanaClient
-  instruction: Instruction
-  requiredRent: bigint
-  transactionSigner: TransactionSigner
-}) {
-  const transactionMessage = await createVectorTransactionMessage({
-    client,
-    instructions: [instruction],
-    transactionSigner,
-  })
-
-  assertIsTransactionMessageWithSingleSendingSigner(transactionMessage)
-
-  const encodedTransactionMessage = getCompiledTransactionMessageEncoder().encode(
-    compileTransactionMessage(transactionMessage),
-  )
-  const [{ value: balance }, { value: fee }] = await Promise.all([
-    client.rpc.getBalance(transactionSigner.address, { commitment: 'confirmed' }).send(),
-    client.rpc
-      .getFeeForMessage(getBase64Decoder().decode(encodedTransactionMessage) as TransactionMessageBytesBase64, {
-        commitment: 'confirmed',
-      })
-      .send(),
-  ])
-
-  if (fee === null) {
-    throw new Error('Unable to estimate the transaction fee. Try again with a fresh blockhash.')
-  }
-  if (balance < fee + requiredRent) {
-    throw new Error('Not enough SOL to pay transaction fees and fund the Vector account on this cluster.')
-  }
-
-  const signatureBytes = await signAndSendTransactionMessageWithSigners(transactionMessage)
-  const signature = getBase58Decoder().decode(signatureBytes)
-
-  if (!signature) {
-    throw new Error('Transaction submitted but no signature was returned by the wallet adapter.')
-  }
-
-  return signature
 }
 
 function formatMutationError(error: unknown) {

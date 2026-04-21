@@ -6,26 +6,16 @@ import {
   getMintSize,
   TOKEN_PROGRAM_ADDRESS,
 } from '@solana-program/token'
-import {
-  type Address,
-  assertIsTransactionMessageWithSingleSendingSigner,
-  compileTransactionMessage,
-  generateKeyPairSigner,
-  getBase58Decoder,
-  getBase64Decoder,
-  getCompiledTransactionMessageEncoder,
-  type Instruction,
-  signAndSendTransactionMessageWithSigners,
-  type TransactionMessageBytesBase64,
-  type TransactionSigner,
-} from '@solana/kit'
+import { type Address, generateKeyPairSigner, type Instruction } from '@solana/kit'
 import { useMutation } from '@tanstack/react-query'
 import { type UiWalletAccount, useWalletUiSigner } from '@wallet-ui/react'
 import { useState } from 'react'
 
 import type { SolanaClient } from '@/solana/data-access/solana-client'
 
-import { createVectorTransactionMessage } from '@/vector/data-access/create-vector-transaction-message'
+import { createSolanaTransactionMessage } from '@/solana/data-access/create-solana-transaction-message'
+import { executeSolanaTransactionMessage } from '@/solana/data-access/execute-solana-transaction-message'
+import { vectorComputeBudget } from '@/vector/data-access/vector-protocol'
 
 export interface VectorDemoSetupResult {
   destinationAtaAddress: Address
@@ -79,11 +69,18 @@ export function useVectorDemoSetupMutation({
         }),
         createAssociatedTokenInstruction,
       ] as const
-      const signature = await executeSetupInstructions({
+      const transactionMessage = await createSolanaTransactionMessage({
         client,
+        computeBudget: vectorComputeBudget,
         instructions,
-        requiredRent: mintRent + tokenAccountRent,
         transactionSigner,
+      })
+      const signature = await executeSolanaTransactionMessage({
+        client,
+        insufficientBalanceMessage:
+          'Not enough SOL to pay transaction fees and fund the demo mint and token account on this cluster.',
+        requiredBalance: mintRent + tokenAccountRent,
+        transactionMessage,
       })
 
       return {
@@ -120,54 +117,6 @@ export function useVectorDemoSetupMutation({
     prepareDemo,
     signature,
   }
-}
-
-async function executeSetupInstructions({
-  client,
-  instructions,
-  requiredRent,
-  transactionSigner,
-}: {
-  client: SolanaClient
-  instructions: readonly Instruction[]
-  requiredRent: bigint
-  transactionSigner: TransactionSigner
-}) {
-  const transactionMessage = await createVectorTransactionMessage({
-    client,
-    instructions,
-    transactionSigner,
-  })
-
-  assertIsTransactionMessageWithSingleSendingSigner(transactionMessage)
-
-  const encodedTransactionMessage = getCompiledTransactionMessageEncoder().encode(
-    compileTransactionMessage(transactionMessage),
-  )
-  const [{ value: balance }, { value: fee }] = await Promise.all([
-    client.rpc.getBalance(transactionSigner.address, { commitment: 'confirmed' }).send(),
-    client.rpc
-      .getFeeForMessage(getBase64Decoder().decode(encodedTransactionMessage) as TransactionMessageBytesBase64, {
-        commitment: 'confirmed',
-      })
-      .send(),
-  ])
-
-  if (fee === null) {
-    throw new Error('Unable to estimate the transaction fee. Try again with a fresh blockhash.')
-  }
-  if (balance < fee + requiredRent) {
-    throw new Error('Not enough SOL to pay transaction fees and fund the demo mint and token account on this cluster.')
-  }
-
-  const signatureBytes = await signAndSendTransactionMessageWithSigners(transactionMessage)
-  const signature = getBase58Decoder().decode(signatureBytes)
-
-  if (!signature) {
-    throw new Error('Transaction submitted but no signature was returned by the wallet adapter.')
-  }
-
-  return signature
 }
 
 function formatMutationError(error: unknown) {

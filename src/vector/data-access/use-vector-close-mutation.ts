@@ -1,29 +1,14 @@
-import {
-  type Address,
-  assertIsTransactionMessageWithSingleSendingSigner,
-  compileTransactionMessage,
-  getBase58Decoder,
-  getBase64Decoder,
-  getCompiledTransactionMessageEncoder,
-  type Instruction,
-  type KeyPairSigner,
-  signAndSendTransactionMessageWithSigners,
-  type TransactionMessageBytesBase64,
-  type TransactionSigner,
-} from '@solana/kit'
+import { type Address, type KeyPairSigner } from '@solana/kit'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { type SolanaClusterId, type UiWalletAccount, useWalletUiSigner } from '@wallet-ui/react'
 import { useState } from 'react'
 
 import type { SolanaClient } from '@/solana/data-access/solana-client'
 
-import {
-  createVectorTransactionMessage,
-  getVectorComputeBudgetInstructions,
-} from '@/vector/data-access/create-vector-transaction-message'
+import { executeSolanaTransactionMessage } from '@/solana/data-access/execute-solana-transaction-message'
 import { getVectorProgramAddress } from '@/vector/data-access/get-vector-program-address'
 import { getVectorAccountQueryKey } from '@/vector/data-access/use-vector-account-query'
-import { signCloseInstruction } from '@/vector/data-access/vector-protocol'
+import { createSignedCloseTransactionMessage } from '@/vector/data-access/vector-protocol'
 
 export function useVectorCloseMutation({
   account,
@@ -47,21 +32,20 @@ export function useVectorCloseMutation({
     mutationFn: async () => {
       await assertVectorProgramIsAvailable({ client, programAddress })
 
-      const computeBudgetInstructions = getVectorComputeBudgetInstructions()
-      const instruction = await signCloseInstruction({
+      const transactionMessage = await createSignedCloseTransactionMessage({
+        client,
         closeTo: transactionSigner.address,
-        feePayer: transactionSigner.address,
-        postInstructions: [],
-        preInstructions: computeBudgetInstructions,
         programAddress,
         seed,
         signer,
+        transactionSigner,
       })
 
-      return await executeCloseInstruction({
+      return await executeSolanaTransactionMessage({
         client,
-        instruction,
-        transactionSigner,
+        insufficientBalanceMessage: 'Not enough SOL to pay transaction fees on this cluster.',
+        requiredBalance: 0n,
+        transactionMessage,
       })
     },
     onSuccess: async () => {
@@ -113,52 +97,6 @@ async function assertVectorProgramIsAvailable({
   if (!maybeProgramAccount.executable) {
     throw new Error(`Program ${programAddress} exists on this cluster but is not executable.`)
   }
-}
-
-async function executeCloseInstruction({
-  client,
-  instruction,
-  transactionSigner,
-}: {
-  client: SolanaClient
-  instruction: Instruction
-  transactionSigner: TransactionSigner
-}) {
-  const transactionMessage = await createVectorTransactionMessage({
-    client,
-    instructions: [instruction],
-    transactionSigner,
-  })
-
-  assertIsTransactionMessageWithSingleSendingSigner(transactionMessage)
-
-  const encodedTransactionMessage = getCompiledTransactionMessageEncoder().encode(
-    compileTransactionMessage(transactionMessage),
-  )
-  const [{ value: balance }, { value: fee }] = await Promise.all([
-    client.rpc.getBalance(transactionSigner.address, { commitment: 'confirmed' }).send(),
-    client.rpc
-      .getFeeForMessage(getBase64Decoder().decode(encodedTransactionMessage) as TransactionMessageBytesBase64, {
-        commitment: 'confirmed',
-      })
-      .send(),
-  ])
-
-  if (fee === null) {
-    throw new Error('Unable to estimate the transaction fee. Try again with a fresh blockhash.')
-  }
-  if (balance < fee) {
-    throw new Error('Not enough SOL to pay transaction fees on this cluster.')
-  }
-
-  const signatureBytes = await signAndSendTransactionMessageWithSigners(transactionMessage)
-  const signature = getBase58Decoder().decode(signatureBytes)
-
-  if (!signature) {
-    throw new Error('Transaction submitted but no signature was returned by the wallet adapter.')
-  }
-
-  return signature
 }
 
 function formatMutationError(error: unknown) {
