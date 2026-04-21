@@ -1,19 +1,16 @@
 import { AuthorityType, getMintToInstruction, getSetAuthorityInstruction } from '@solana-program/token'
 import {
   type Address,
-  appendTransactionMessageInstruction,
   assertIsTransactionMessageWithSingleSendingSigner,
   compileTransactionMessage,
-  createTransactionMessage,
   getBase58Decoder,
   getBase64Decoder,
   getCompiledTransactionMessageEncoder,
+  type Instruction,
   type KeyPairSigner,
-  pipe,
-  setTransactionMessageFeePayerSigner,
-  setTransactionMessageLifetimeUsingBlockhash,
   signAndSendTransactionMessageWithSigners,
   type TransactionMessageBytesBase64,
+  type TransactionSigner,
 } from '@solana/kit'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { type SolanaClusterId, type UiWalletAccount, useWalletUiSigner } from '@wallet-ui/react'
@@ -21,6 +18,10 @@ import { useState } from 'react'
 
 import type { SolanaClient } from '@/solana/data-access/solana-client'
 
+import {
+  createVectorTransactionMessage,
+  getVectorComputeBudgetInstructions,
+} from '@/vector/data-access/create-vector-transaction-message'
 import { getVectorProgramAddress } from '@/vector/data-access/get-vector-program-address'
 import { getVectorAccountQueryKey } from '@/vector/data-access/use-vector-account-query'
 import { signAdvanceInstruction } from '@/vector/data-access/vector-protocol'
@@ -75,10 +76,11 @@ export function useVectorAdvanceDemoMutation({
         owned: mintAddress,
         owner: transactionSigner,
       })
+      const computeBudgetInstructions = getVectorComputeBudgetInstructions()
       const advanceInstruction = await signAdvanceInstruction({
         feePayer: transactionSigner.address,
         postInstructions: [mintToInstruction, connectedWalletToPdaInstruction],
-        preInstructions: [],
+        preInstructions: computeBudgetInstructions,
         programAddress,
         seed,
         signer,
@@ -148,28 +150,14 @@ async function executeAdvanceInstructions({
   transactionSigner,
 }: {
   client: SolanaClient
-  instructions: readonly [
-    Awaited<ReturnType<typeof signAdvanceInstruction>>,
-    ReturnType<typeof getMintToInstruction>,
-    ReturnType<typeof getSetAuthorityInstruction>,
-  ]
-  transactionSigner: ReturnType<typeof useWalletUiSigner>
+  instructions: readonly Instruction[]
+  transactionSigner: TransactionSigner
 }) {
-  const { value: latestBlockhash } = await client.rpc.getLatestBlockhash({ commitment: 'confirmed' }).send()
-  const transactionMessage = appendTransactionMessageInstruction(
-    instructions[2],
-    appendTransactionMessageInstruction(
-      instructions[1],
-      appendTransactionMessageInstruction(
-        instructions[0],
-        pipe(
-          createTransactionMessage({ version: 0 }),
-          (message) => setTransactionMessageFeePayerSigner(transactionSigner, message),
-          (message) => setTransactionMessageLifetimeUsingBlockhash(latestBlockhash, message),
-        ),
-      ),
-    ),
-  )
+  const transactionMessage = await createVectorTransactionMessage({
+    client,
+    instructions,
+    transactionSigner,
+  })
 
   assertIsTransactionMessageWithSingleSendingSigner(transactionMessage)
 

@@ -1,18 +1,15 @@
 import {
   type Address,
-  appendTransactionMessageInstruction,
   assertIsTransactionMessageWithSingleSendingSigner,
   compileTransactionMessage,
-  createTransactionMessage,
   getBase58Decoder,
   getBase64Decoder,
   getCompiledTransactionMessageEncoder,
+  type Instruction,
   type KeyPairSigner,
-  pipe,
-  setTransactionMessageFeePayerSigner,
-  setTransactionMessageLifetimeUsingBlockhash,
   signAndSendTransactionMessageWithSigners,
   type TransactionMessageBytesBase64,
+  type TransactionSigner,
 } from '@solana/kit'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { type SolanaClusterId, type UiWalletAccount, useWalletUiSigner } from '@wallet-ui/react'
@@ -20,6 +17,10 @@ import { useState } from 'react'
 
 import type { SolanaClient } from '@/solana/data-access/solana-client'
 
+import {
+  createVectorTransactionMessage,
+  getVectorComputeBudgetInstructions,
+} from '@/vector/data-access/create-vector-transaction-message'
 import { getVectorProgramAddress } from '@/vector/data-access/get-vector-program-address'
 import { getVectorAccountQueryKey } from '@/vector/data-access/use-vector-account-query'
 import { signCloseInstruction } from '@/vector/data-access/vector-protocol'
@@ -46,11 +47,12 @@ export function useVectorCloseMutation({
     mutationFn: async () => {
       await assertVectorProgramIsAvailable({ client, programAddress })
 
+      const computeBudgetInstructions = getVectorComputeBudgetInstructions()
       const instruction = await signCloseInstruction({
         closeTo: transactionSigner.address,
         feePayer: transactionSigner.address,
         postInstructions: [],
-        preInstructions: [],
+        preInstructions: computeBudgetInstructions,
         programAddress,
         seed,
         signer,
@@ -119,16 +121,14 @@ async function executeCloseInstruction({
   transactionSigner,
 }: {
   client: SolanaClient
-  instruction: Awaited<ReturnType<typeof signCloseInstruction>>
-  transactionSigner: ReturnType<typeof useWalletUiSigner>
+  instruction: Instruction
+  transactionSigner: TransactionSigner
 }) {
-  const { value: latestBlockhash } = await client.rpc.getLatestBlockhash({ commitment: 'confirmed' }).send()
-  const transactionMessage = pipe(
-    createTransactionMessage({ version: 0 }),
-    (message) => setTransactionMessageFeePayerSigner(transactionSigner, message),
-    (message) => setTransactionMessageLifetimeUsingBlockhash(latestBlockhash, message),
-    (message) => appendTransactionMessageInstruction(instruction, message),
-  )
+  const transactionMessage = await createVectorTransactionMessage({
+    client,
+    instructions: [instruction],
+    transactionSigner,
+  })
 
   assertIsTransactionMessageWithSingleSendingSigner(transactionMessage)
 
