@@ -5,13 +5,12 @@ import { useState } from 'react'
 
 import type { SolanaClient } from '@/solana/data-access/solana-client'
 
+import { executeSolanaTransactionMessageWithSingleSendingSigner } from '@/solana/data-access/execute-solana-transaction-message'
 import { assertVectorProgramIsAvailable } from '@/vector/data-access/assert-vector-program-is-available'
-import { getVectorComputeBudgetInstructions } from '@/vector/data-access/create-vector-transaction-message'
-import { executeVectorTransaction } from '@/vector/data-access/execute-vector-transaction'
 import { formatMutationError } from '@/vector/data-access/format-mutation-error'
 import { getVectorProgramAddress } from '@/vector/data-access/get-vector-program-address'
 import { getVectorAccountQueryKey } from '@/vector/data-access/use-vector-account-query'
-import { signCloseInstruction } from '@/vector/data-access/vector-protocol'
+import { createSignedCloseTransactionMessage } from '@/vector/data-access/vector-protocol'
 
 export function useVectorCloseMutation({
   account,
@@ -35,25 +34,20 @@ export function useVectorCloseMutation({
     mutationFn: async () => {
       await assertVectorProgramIsAvailable({ client, programAddress })
 
-      const computeBudgetInstructions = getVectorComputeBudgetInstructions()
-      const instruction = await signCloseInstruction({
+      const transactionMessage = await createSignedCloseTransactionMessage({
+        client,
         closeTo: transactionSigner.address,
-        feePayer: transactionSigner.address,
-        postInstructions: [],
-        preInstructions: computeBudgetInstructions,
         programAddress,
         seed,
         signer,
+        transactionSigner,
       })
 
-      return await executeVectorTransaction({
+      return await executeSolanaTransactionMessageWithSingleSendingSigner({
         client,
-        instructions: [instruction],
-        requiredBalance: {
-          additionalLamports: 0n,
-          insufficientFundsMessage: 'Not enough SOL to pay transaction fees on this cluster.',
-        },
-        transactionSigner,
+        insufficientBalanceMessage: 'Not enough SOL to pay transaction fees on this cluster.',
+        requiredBalance: 0n,
+        transactionMessage,
       })
     },
     onSuccess: async () => {

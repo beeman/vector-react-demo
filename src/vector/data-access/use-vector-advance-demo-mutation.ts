@@ -6,13 +6,12 @@ import { useState } from 'react'
 
 import type { SolanaClient } from '@/solana/data-access/solana-client'
 
+import { executeSolanaTransactionMessageWithSingleSendingSigner } from '@/solana/data-access/execute-solana-transaction-message'
 import { assertVectorProgramIsAvailable } from '@/vector/data-access/assert-vector-program-is-available'
-import { getVectorComputeBudgetInstructions } from '@/vector/data-access/create-vector-transaction-message'
-import { executeVectorTransaction } from '@/vector/data-access/execute-vector-transaction'
 import { formatMutationError } from '@/vector/data-access/format-mutation-error'
 import { getVectorProgramAddress } from '@/vector/data-access/get-vector-program-address'
 import { getVectorAccountQueryKey } from '@/vector/data-access/use-vector-account-query'
-import { signAdvanceInstruction } from '@/vector/data-access/vector-protocol'
+import { createSignedAdvanceTransactionMessage } from '@/vector/data-access/vector-protocol'
 
 export function useVectorAdvanceDemoMutation({
   account,
@@ -64,25 +63,21 @@ export function useVectorAdvanceDemoMutation({
         owned: mintAddress,
         owner: transactionSigner,
       })
-      const computeBudgetInstructions = getVectorComputeBudgetInstructions()
-      const advanceInstruction = await signAdvanceInstruction({
-        feePayer: transactionSigner.address,
-        postInstructions: [mintToInstruction, connectedWalletToPdaInstruction],
-        preInstructions: computeBudgetInstructions,
+      const transactionMessage = await createSignedAdvanceTransactionMessage({
+        client,
+        instructions: [mintToInstruction, connectedWalletToPdaInstruction],
         programAddress,
         seed,
         signer,
         subInstructions: [pdaToConnectedWalletInstruction],
+        transactionSigner,
       })
 
-      return await executeVectorTransaction({
+      return await executeSolanaTransactionMessageWithSingleSendingSigner({
         client,
-        instructions: [advanceInstruction, mintToInstruction, connectedWalletToPdaInstruction],
-        requiredBalance: {
-          additionalLamports: 0n,
-          insufficientFundsMessage: 'Not enough SOL to pay transaction fees on this cluster.',
-        },
-        transactionSigner,
+        insufficientBalanceMessage: 'Not enough SOL to pay transaction fees on this cluster.',
+        requiredBalance: 0n,
+        transactionMessage,
       })
     },
     onSuccess: async () => {
