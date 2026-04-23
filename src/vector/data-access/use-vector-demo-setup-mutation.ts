@@ -13,8 +13,10 @@ import { useState } from 'react'
 
 import type { SolanaClient } from '@/solana/data-access/solana-client'
 
-import { executeVectorTransaction } from '@/vector/data-access/execute-vector-transaction'
+import { createSolanaTransactionMessage } from '@/solana/data-access/create-solana-transaction-message'
+import { executeSolanaTransactionMessageWithSingleSendingSigner } from '@/solana/data-access/execute-solana-transaction-message'
 import { formatMutationError } from '@/vector/data-access/format-mutation-error'
+import { vectorComputeBudget } from '@/vector/data-access/vector-protocol'
 
 export interface VectorDemoSetupResult {
   destinationAtaAddress: Address
@@ -68,15 +70,18 @@ export function useVectorDemoSetupMutation({
         }),
         createAssociatedTokenInstruction,
       ] as const
-      const signature = await executeVectorTransaction({
+      const transactionMessage = await createSolanaTransactionMessage({
         client,
+        computeBudget: vectorComputeBudget,
         instructions,
-        requiredBalance: {
-          additionalLamports: mintRent + tokenAccountRent,
-          insufficientFundsMessage:
-            'Not enough SOL to pay transaction fees and fund the demo mint and token account on this cluster.',
-        },
         transactionSigner,
+      })
+      const signature = await executeSolanaTransactionMessageWithSingleSendingSigner({
+        client,
+        insufficientBalanceMessage:
+          'Not enough SOL to pay transaction fees and fund the demo mint and token account on this cluster.',
+        requiredBalance: mintRent + tokenAccountRent,
+        transactionMessage,
       })
 
       return {

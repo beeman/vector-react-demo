@@ -5,12 +5,17 @@ import { useState } from 'react'
 
 import type { SolanaClient } from '@/solana/data-access/solana-client'
 
+import { createSolanaTransactionMessage } from '@/solana/data-access/create-solana-transaction-message'
+import { executeSolanaTransactionMessageWithSingleSendingSigner } from '@/solana/data-access/execute-solana-transaction-message'
 import { assertVectorProgramIsAvailable } from '@/vector/data-access/assert-vector-program-is-available'
-import { executeVectorTransaction } from '@/vector/data-access/execute-vector-transaction'
 import { formatMutationError } from '@/vector/data-access/format-mutation-error'
 import { getVectorProgramAddress } from '@/vector/data-access/get-vector-program-address'
 import { getVectorAccountQueryKey } from '@/vector/data-access/use-vector-account-query'
-import { createInitializeInstruction, VECTOR_ACCOUNT_SIZE } from '@/vector/data-access/vector-protocol'
+import {
+  createInitializeInstruction,
+  VECTOR_ACCOUNT_SIZE,
+  vectorComputeBudget,
+} from '@/vector/data-access/vector-protocol'
 
 export function useVectorInitializeMutation({
   account,
@@ -40,16 +45,19 @@ export function useVectorInitializeMutation({
       const requiredRent = await client.rpc
         .getMinimumBalanceForRentExemption(BigInt(VECTOR_ACCOUNT_SIZE), { commitment: 'confirmed' })
         .send()
-
-      return await executeVectorTransaction({
+      const transactionMessage = await createSolanaTransactionMessage({
         client,
+        computeBudget: vectorComputeBudget,
         instructions: [instruction],
-        requiredBalance: {
-          additionalLamports: requiredRent,
-          insufficientFundsMessage:
-            'Not enough SOL to pay transaction fees and fund the Vector account on this cluster.',
-        },
         transactionSigner,
+      })
+
+      return await executeSolanaTransactionMessageWithSingleSendingSigner({
+        client,
+        insufficientBalanceMessage:
+          'Not enough SOL to pay transaction fees and fund the Vector account on this cluster.',
+        requiredBalance: requiredRent,
+        transactionMessage,
       })
     },
     onSuccess: async () => {
